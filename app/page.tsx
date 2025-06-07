@@ -19,10 +19,25 @@ interface Location {
   longitude: number;
 }
 
+interface MarineData {
+  current: {
+    wave_height: number;
+    sea_surface_temperature: number;
+    time: string;
+  };
+  current_units: {
+    wave_height: string;
+    sea_surface_temperature: string;
+  };
+}
+
 export default function Home() {
   const [search, setSearch] = React.useState("");
   const [locations, setLocations] = React.useState<Location[]>([]);
   const [isLoading, setIsLoading] = React.useState(false);
+  const [selectedLocation, setSelectedLocation] = React.useState<Location | null>(null);
+  const [marineData, setMarineData] = React.useState<MarineData | null>(null);
+  const [isLoadingMarine, setIsLoadingMarine] = React.useState(false);
 
   const searchLocations = async (query: string) => {
     if (query.length < 3) return;
@@ -42,6 +57,27 @@ export default function Home() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const fetchMarineData = async (location: Location) => {
+    setIsLoadingMarine(true);
+    try {
+      const response = await fetch(
+        `https://marine-api.open-meteo.com/v1/marine?latitude=${location.latitude}&longitude=${location.longitude}&current=wave_height,sea_surface_temperature`
+      );
+      const data = await response.json();
+      setMarineData(data);
+    } catch (error) {
+      console.error("Failed to fetch marine data:", error);
+      setMarineData(null);
+    } finally {
+      setIsLoadingMarine(false);
+    }
+  };
+
+  const handleLocationSelect = (location: Location) => {
+    setSelectedLocation(location);
+    fetchMarineData(location);
   };
 
   React.useEffect(() => {
@@ -97,6 +133,43 @@ export default function Home() {
             </div>
 
             <div className="mt-4 space-y-4">
+              {selectedLocation && (
+                <Card className="bg-primary/5">
+                  <CardHeader>
+                    <CardTitle className="text-xl">
+                      {selectedLocation.name}, {selectedLocation.country}
+                    </CardTitle>
+                    <CardDescription>
+                      {selectedLocation.latitude.toFixed(4)}°, {selectedLocation.longitude.toFixed(4)}°
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {isLoadingMarine ? (
+                      <div className="space-y-2">
+                        <Skeleton className="h-4 w-[200px]" />
+                        <Skeleton className="h-4 w-[150px]" />
+                      </div>
+                    ) : marineData ? (
+                      <div className="space-y-2">
+                        {marineData.current.wave_height !== null && marineData.current.wave_height !== undefined ? (
+                          <p>Wave Height: {marineData.current.wave_height}{marineData.current_units.wave_height}</p>
+                        ) : (
+                          <p className="text-muted-foreground">Wave height data not available for this location</p>
+                        )}
+                        {marineData.current.sea_surface_temperature !== null && marineData.current.sea_surface_temperature !== undefined ? (
+                          <p>Water Temperature: {marineData.current.sea_surface_temperature}{marineData.current_units.sea_surface_temperature}</p>
+                        ) : (
+                          <p className="text-muted-foreground">Water temperature data not available for this location</p>
+                        )}
+                        <p className="text-sm text-muted-foreground">Last updated: {new Date(marineData.current.time).toLocaleString()}</p>
+                      </div>
+                    ) : (
+                      <p className="text-muted-foreground">Failed to load marine data</p>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
               {isLoading ? (
                 <LoadingState />
               ) : locations.length > 0 ? (
@@ -105,7 +178,7 @@ export default function Home() {
                     <Card
                       key={`${location.latitude}-${location.longitude}`}
                       className="cursor-pointer transition-colors hover:bg-muted"
-                      onClick={() => console.log("Selected:", location)}
+                      onClick={() => handleLocationSelect(location)}
                     >
                       <CardContent className="p-4">
                         <div className="flex justify-between items-center">
@@ -116,8 +189,7 @@ export default function Home() {
                             </p>
                           </div>
                           <div className="text-sm text-muted-foreground">
-                            {location.latitude.toFixed(2)}°,{" "}
-                            {location.longitude.toFixed(2)}°
+                            {location.latitude.toFixed(2)}°, {location.longitude.toFixed(2)}°
                           </div>
                         </div>
                       </CardContent>
